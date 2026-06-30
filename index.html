@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <title>PT종합관리팀 커피 주문</title>
+<meta property="og:title" content="PT종합관리팀 커피 주문">
+<meta property="og:description" content="여기를 눌러 메뉴를 선택하세요.">
+<meta property="og:type" content="website">
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
@@ -94,6 +97,7 @@ const MENU = [
   { id:"etc_yogurt",            cat:"other", name:"요거트스무디",     emoji:"🥛", color:"#D4AACC" },
   { id:"etc_peppermint",        cat:"other", name:"페퍼민트",         emoji:"🌿", color:"#4FAE8C" },
   { id:"etc_chamomile",         cat:"other", name:"캐모마일",         emoji:"🌼", color:"#E8B84B" },
+  { id:"etc_bundaberg",         cat:"other", name:"분다버그",         emoji:"🍾", color:"#C97A3D" },
 ];
 const CATS = [
   { id:"hot",   label:"HOT",  icon:"🔥", accent:"#C04000", tag:"#FEE2D0", tagText:"#C04000" },
@@ -112,7 +116,9 @@ let state = {
   nameInput: "",
   newMember: "",
   pendingMenu: "",  // 메뉴 선택 후 요청사항 입력 전 임시 저장
+  pendingCustomName: "",
   noteInput: "",
+  customMenuInput: "",
 };
 
 const QUICK_NOTES = ["연하게", "샷 추가", "얼음 적게", "당도 조절", "라지 사이즈"];
@@ -127,6 +133,12 @@ function getOrder(name){
   if(typeof o === "string") return { menuId:o, note:"" };
   return o;
 }
+// 메뉴 표시용 정보 (직접입력 메뉴 포함)
+function getDisplayMenu(order){
+  if(!order) return null;
+  if(order.customName) return { emoji:"✍️", name:order.customName, cat:"other" };
+  return getMenu(order.menuId);
+}
 function totalOrdered(){ return Object.keys(state.orders).length; }
 function progress(){ return state.members.length ? Math.round(totalOrdered()/state.members.length*100) : 0; }
 
@@ -136,15 +148,19 @@ db.ref("history").on("value", snap => { state.history = snap.val()||{}; render()
 db.ref("members").on("value", snap => { if(snap.val()) state.members = snap.val(); render(); });
 
 function saveMembers(list){ state.members=list; db.ref("members").set(list); }
-function saveOrder(name, menuId, note){ db.ref("orders/"+name).set({ menuId, note: note||"" }); }
+function saveOrder(name, menuId, note, customName){
+  const payload = { menuId: menuId||"", note: note||"" };
+  if(customName) payload.customName = customName;
+  db.ref("orders/"+name).set(payload);
+}
 function removeOrder(name){ db.ref("orders/"+name).remove(); }
 
 function resetOrders(){
   const h = {...state.history};
   Object.entries(state.orders).forEach(([m,o])=>{
-    const menuId = typeof o === "string" ? o : o.menuId;
+    const menuId = typeof o === "string" ? o : (o.customName ? "" : o.menuId);
     if(!h[m]) h[m]=[];
-    h[m]=[menuId,...h[m]].slice(0,10);
+    if(menuId) h[m]=[menuId,...h[m]].slice(0,10);
   });
   db.ref("history").set(h);
   db.ref("orders").remove();
@@ -169,7 +185,7 @@ function render(){
         </div>
         ${s.members.map(m=>{
           const o = getOrder(m);
-          const menu = o ? getMenu(o.menuId) : null;
+          const menu = o ? getDisplayMenu(o) : null;
           return `<button class="member-btn ${menu?'done':''}" onclick="pickName('${m}')">
             ${m}${menu?`<span class="member-status" style="color:#5A9E5A">✓ ${menu.emoji} ${menu.name}</span>`:''}
           </button>`;
@@ -187,7 +203,7 @@ function render(){
   // ── 주문 완료 ──
   if(s.screen==="done"){
     const myOrder = getOrder(s.myName);
-    const menu = myOrder ? getMenu(myOrder.menuId) : null;
+    const menu = myOrder ? getDisplayMenu(myOrder) : null;
     app.innerHTML = `
       <div style="padding-top:60px">
         <div class="big-emoji">${menu?menu.emoji:"☕"}</div>
@@ -205,7 +221,7 @@ function render(){
           <div style="margin-top:10px">
             ${s.members.map(m=>{
               const o=getOrder(m);
-              const mo=o?getMenu(o.menuId):null;
+              const mo=o?getDisplayMenu(o):null;
               return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
                 <span style="color:#555">${m}</span>
                 ${mo?`<span style="color:#5A9E5A">✓ ${mo.emoji} ${mo.name}${o.note?` (${o.note})`:''}</span>`:'<span style="color:#ccc">미선택</span>'}
@@ -245,13 +261,24 @@ function render(){
             </button>`;
           }).join("")}
         </div>
+        ${s.activeTab==="other"?`
+        <p class="section-label" style="margin-top:0">메뉴에 없으면 직접 입력</p>
+        <div class="input-row">
+          <input id="customMenuInput" placeholder="예: 자몽에이드" value="${s.customMenuInput||''}"
+            oninput="state.customMenuInput=this.value" onkeydown="if(event.key==='Enter')pickCustomMenu()">
+          <button onclick="pickCustomMenu()">선택</button>
+        </div>
+        ${myOrder?.customName?`<div class="hint-box">✓ 현재 선택: ✍️ ${myOrder.customName}</div>`:""}
+        `:""}
       </div>`;
     return;
   }
 
   // ── 요청사항 입력 ──
   if(s.screen==="note"){
-    const menu = getMenu(s.pendingMenu);
+    const menu = s.pendingCustomName
+      ? { emoji:"✍️", name:s.pendingCustomName }
+      : getMenu(s.pendingMenu);
     app.innerHTML = `
       <div style="padding-top:40px">
         <div style="margin-bottom:18px"><button class="back-btn" onclick="go('order')">←</button><b style="font-size:17px">요청사항 (선택)</b></div>
@@ -289,7 +316,7 @@ function render(){
           <div style="margin-top:10px">
             ${s.members.map(m=>{
               const o=getOrder(m);
-              const mo=o?getMenu(o.menuId):null;
+              const mo=o?getDisplayMenu(o):null;
               return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
                 <span style="color:#555">${m}</span>
                 ${mo?`<span style="color:#5A9E5A">✓ ${mo.emoji} ${mo.name}</span>`:'<span style="color:#ccc">미선택</span>'}
@@ -307,7 +334,10 @@ function render(){
 
   // ── 집계 ──
   if(s.screen==="summary"){
-    const summary = MENU.map(m=>({...m,count:Object.values(s.orders).filter(o=>(typeof o==="string"?o:o.menuId)===m.id).length})).filter(m=>m.count>0);
+    const summary = MENU.map(m=>({...m,count:Object.values(s.orders).filter(o=>typeof o!=="string" && !o.customName && o.menuId===m.id).length})).filter(m=>m.count>0);
+    const customOrders = Object.values(s.orders).filter(o=>typeof o!=="string" && o.customName);
+    const customSummary = {};
+    customOrders.forEach(o=>{ customSummary[o.customName]=(customSummary[o.customName]||0)+1; });
     app.innerHTML = `
       <div style="padding-top:40px">
         <div style="margin-bottom:20px"><button class="back-btn" onclick="go('home')">←</button><b style="font-size:17px">주문 집계</b></div>
@@ -320,11 +350,16 @@ function render(){
               <span class="row-count">${m.count}잔</span>
             </div>`).join("")}`;
         }).join("")}
-        ${summary.length===0?'<p style="color:#bbb;font-size:14px;margin-bottom:16px">아직 주문이 없습니다</p>':""}
+        ${Object.keys(customSummary).length?`<div class="section-label" style="color:#7C3D8C">✍️ 직접입력</div>
+          ${Object.entries(customSummary).map(([name,count])=>`<div class="row">
+            <div><span style="margin-right:6px">✍️</span><span class="row-name">${name}</span></div>
+            <span class="row-count">${count}잔</span>
+          </div>`).join("")}`:""}
+        ${(summary.length===0 && Object.keys(customSummary).length===0)?'<p style="color:#bbb;font-size:14px;margin-bottom:16px">아직 주문이 없습니다</p>':""}
         <div class="section-label" style="margin-top:20px">팀원별 주문</div>
         ${s.members.map(m=>{
           const o=getOrder(m);
-          const menu=o?getMenu(o.menuId):null;
+          const menu=o?getDisplayMenu(o):null;
           const cat=getCat(menu?.cat);
           return `<div class="row">
             <span class="row-name">${m}</span>
@@ -370,8 +405,21 @@ function addNewName(){
 }
 function pickMenu(menuId){
   state.pendingMenu = menuId;
+  state.pendingCustomName = "";
   const existing = getOrder(state.myName);
-  state.noteInput = (existing && existing.menuId===menuId) ? (existing.note||"") : "";
+  state.noteInput = (existing && existing.menuId===menuId && !existing.customName) ? (existing.note||"") : "";
+  state.screen = "note";
+  render();
+}
+function pickCustomMenu(){
+  const inp = document.getElementById("customMenuInput");
+  const n = inp ? inp.value.trim() : state.customMenuInput.trim();
+  if(!n) return;
+  state.pendingMenu = "";
+  state.pendingCustomName = n;
+  state.customMenuInput = "";
+  const existing = getOrder(state.myName);
+  state.noteInput = (existing && existing.customName===n) ? (existing.note||"") : "";
   state.screen = "note";
   render();
 }
@@ -384,7 +432,7 @@ function toggleQuickNote(tag){
 }
 function confirmOrder(skipNote){
   const note = skipNote ? "" : state.noteInput.trim();
-  saveOrder(state.myName, state.pendingMenu, note);
+  saveOrder(state.myName, state.pendingMenu, note, state.pendingCustomName);
   state.screen="done";
   render();
 }
