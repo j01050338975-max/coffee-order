@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>팀 커피 주문</title>
+<title>PT종합관리팀 커피 주문</title>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
 <style>
@@ -49,6 +49,11 @@
   .center { text-align: center; }
   .small-link { background: none; border: none; color: #bbb; font-size: 12px; cursor: pointer; margin-top: 8px; display: block; text-align: center; }
   .member-status { font-size: 11px; font-weight: 600; margin-left: 6px; }
+  .note-tag { font-size: 11px; color: #8A7355; margin-top: 4px; }
+  textarea.note-input { width:100%; padding:12px 14px; border:1.5px solid #D8D0C0; border-radius:12px; font-size:14px; outline:none; background:#fff; resize:none; font-family:inherit; margin-bottom:10px; }
+  .quick-tags { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .quick-tag { padding:7px 12px; background:#fff; border:1.5px solid #E8E2D8; border-radius:99px; font-size:12px; font-weight:600; color:#7A5C3E; cursor:pointer; }
+  .quick-tag.on { background:#6F4E37; border-color:#6F4E37; color:#fff; }
 </style>
 </head>
 <body>
@@ -75,16 +80,20 @@ const MENU = [
   { id:"hot_greentea",          cat:"hot",   name:"녹차라떼",         emoji:"🍵", color:"#5A9E5A" },
   { id:"hot_toffeenut",         cat:"hot",   name:"토피넛라떼",       emoji:"☕", color:"#A0662A" },
   { id:"hot_misugaru",          cat:"hot",   name:"미숫가루라떼",     emoji:"🌾", color:"#B89A60" },
+  { id:"hot_caramel_macchiato", cat:"hot",   name:"카라멜 마끼야또",  emoji:"☕", color:"#B8773A" },
   { id:"ice_americano",         cat:"ice",   name:"아메리카노",       emoji:"🧊", color:"#4A90D9" },
   { id:"ice_latte",             cat:"ice",   name:"카페라떼",         emoji:"🧊", color:"#7EB8F7" },
   { id:"ice_vanilla",           cat:"ice",   name:"바닐라라떼",       emoji:"🧊", color:"#A8C8F0" },
   { id:"ice_greentea",          cat:"ice",   name:"녹차라떼",         emoji:"🍵", color:"#7BC47B" },
   { id:"ice_toffeenut",         cat:"ice",   name:"토피넛라떼",       emoji:"🧊", color:"#7AAAD4" },
   { id:"ice_misugaru",          cat:"ice",   name:"미숫가루라떼",     emoji:"🧊", color:"#9EB8D8" },
+  { id:"ice_caramel_macchiato", cat:"ice",   name:"카라멜 마끼야또",  emoji:"🧊", color:"#6FA8DC" },
   { id:"etc_strawberry_banana", cat:"other", name:"딸기바나나주스",   emoji:"🍓", color:"#F08080" },
   { id:"etc_banana",            cat:"other", name:"바나나주스",       emoji:"🍌", color:"#F5C542" },
   { id:"etc_strawberry_yogurt", cat:"other", name:"딸기요거트스무디", emoji:"🍓", color:"#E87070" },
   { id:"etc_yogurt",            cat:"other", name:"요거트스무디",     emoji:"🥛", color:"#D4AACC" },
+  { id:"etc_peppermint",        cat:"other", name:"페퍼민트",         emoji:"🌿", color:"#4FAE8C" },
+  { id:"etc_chamomile",         cat:"other", name:"캐모마일",         emoji:"🌼", color:"#E8B84B" },
 ];
 const CATS = [
   { id:"hot",   label:"HOT",  icon:"🔥", accent:"#C04000", tag:"#FEE2D0", tagText:"#C04000" },
@@ -93,19 +102,31 @@ const CATS = [
 ];
 
 let state = {
-  screen: "name",   // name | home | order | done | summary | settings
+  screen: "name",   // name | home | order | note | done | summary | settings
   myName: "",
-  members: ["김민준","이서연","박지호","최수아","정도윤"],
+  members: ["곽창용","김재환","김승필","홍순철","조인규","유현희","이진","김대훈"],
   orders: {},
   history: {},
   activeTab: "hot",
   connected: false,
   nameInput: "",
   newMember: "",
+  pendingMenu: "",  // 메뉴 선택 후 요청사항 입력 전 임시 저장
+  noteInput: "",
 };
+
+const QUICK_NOTES = ["연하게", "샷 추가", "얼음 적게", "당도 조절", "라지 사이즈"];
+
 
 function getMenu(id){ return MENU.find(m=>m.id===id); }
 function getCat(id){ return CATS.find(c=>c.id===id); }
+function getOrder(name){
+  const o = state.orders[name];
+  if(!o) return null;
+  // 이전 데이터 호환: 문자열이면 menuId만 있는 것
+  if(typeof o === "string") return { menuId:o, note:"" };
+  return o;
+}
 function totalOrdered(){ return Object.keys(state.orders).length; }
 function progress(){ return state.members.length ? Math.round(totalOrdered()/state.members.length*100) : 0; }
 
@@ -115,14 +136,15 @@ db.ref("history").on("value", snap => { state.history = snap.val()||{}; render()
 db.ref("members").on("value", snap => { if(snap.val()) state.members = snap.val(); render(); });
 
 function saveMembers(list){ state.members=list; db.ref("members").set(list); }
-function saveOrder(name, menuId){ db.ref("orders/"+name).set(menuId); }
+function saveOrder(name, menuId, note){ db.ref("orders/"+name).set({ menuId, note: note||"" }); }
 function removeOrder(name){ db.ref("orders/"+name).remove(); }
 
 function resetOrders(){
   const h = {...state.history};
-  Object.entries(state.orders).forEach(([m,id])=>{
+  Object.entries(state.orders).forEach(([m,o])=>{
+    const menuId = typeof o === "string" ? o : o.menuId;
     if(!h[m]) h[m]=[];
-    h[m]=[id,...h[m]].slice(0,10);
+    h[m]=[menuId,...h[m]].slice(0,10);
   });
   db.ref("history").set(h);
   db.ref("orders").remove();
@@ -141,12 +163,13 @@ function render(){
       <div style="padding-top:60px">
         <div class="center" style="margin-bottom:28px">
           <div style="font-size:52px">☕</div>
-          <h1 style="margin-top:8px">팀 커피 주문</h1>
+          <h1 style="margin-top:8px">PT종합관리팀 커피 주문</h1>
           <div class="sub">내 이름을 선택하세요</div>
           <div style="margin-top:6px; font-size:12px">${s.connected?'<span class="dot-green">● 실시간 연결됨</span>':'<span class="dot-gray">● 연결 중...</span>'}</div>
         </div>
         ${s.members.map(m=>{
-          const menu = getMenu(s.orders[m]);
+          const o = getOrder(m);
+          const menu = o ? getMenu(o.menuId) : null;
           return `<button class="member-btn ${menu?'done':''}" onclick="pickName('${m}')">
             ${m}${menu?`<span class="member-status" style="color:#5A9E5A">✓ ${menu.emoji} ${menu.name}</span>`:''}
           </button>`;
@@ -163,12 +186,14 @@ function render(){
 
   // ── 주문 완료 ──
   if(s.screen==="done"){
-    const menu = getMenu(s.orders[s.myName]);
+    const myOrder = getOrder(s.myName);
+    const menu = myOrder ? getMenu(myOrder.menuId) : null;
     app.innerHTML = `
       <div style="padding-top:60px">
         <div class="big-emoji">${menu?menu.emoji:"☕"}</div>
         <div class="center">
           <h2>${menu?menu.name:"주문 완료"}</h2>
+          ${myOrder?.note?`<div class="note-tag">📝 ${myOrder.note}</div>`:""}
           <div class="sub" style="margin-top:4px">주문이 접수됐어요!</div>
         </div>
         <div class="card" style="margin-top:24px">
@@ -179,10 +204,11 @@ function render(){
           <div class="progress-bar"><div class="progress-fill" style="width:${progress()}%"></div></div>
           <div style="margin-top:10px">
             ${s.members.map(m=>{
-              const mo=getMenu(s.orders[m]);
+              const o=getOrder(m);
+              const mo=o?getMenu(o.menuId):null;
               return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
                 <span style="color:#555">${m}</span>
-                ${mo?`<span style="color:#5A9E5A">✓ ${mo.emoji} ${mo.name}</span>`:'<span style="color:#ccc">미선택</span>'}
+                ${mo?`<span style="color:#5A9E5A">✓ ${mo.emoji} ${mo.name}${o.note?` (${o.note})`:''}</span>`:'<span style="color:#ccc">미선택</span>'}
               </div>`;
             }).join("")}
           </div>
@@ -197,10 +223,11 @@ function render(){
   // ── 메뉴 선택 ──
   if(s.screen==="order"){
     const recentHistory = (s.history[s.myName]||[]).slice(0,3).map(id=>getMenu(id)).filter(Boolean);
+    const myOrder = getOrder(s.myName);
     app.innerHTML = `
       <div style="padding-top:40px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-          <div><button class="back-btn" onclick="go('${s.orders[s.myName]?'done':'home'}')">←</button><b>${s.myName}</b>님, 메뉴를 선택하세요</div>
+          <div><button class="back-btn" onclick="go('${myOrder?'done':'home'}')">←</button><b>${s.myName}</b>님, 메뉴를 선택하세요</div>
         </div>
         ${recentHistory.length?`<div class="hint-box">지난번: ${recentHistory.map(m=>`${m.emoji} ${m.name}`).join(" · ")}</div>`:""}
         <div class="tabs">
@@ -208,7 +235,7 @@ function render(){
         </div>
         <div class="menu-grid">
           ${MENU.filter(m=>m.cat===s.activeTab).map(m=>{
-            const chosen = s.orders[s.myName]===m.id;
+            const chosen = myOrder?.menuId===m.id;
             return `<button class="menu-btn ${chosen?'chosen':''}"
               style="background:${chosen?m.color:'#fff'};border-color:${chosen?m.color:'#E8E2D8'};color:${chosen?'#fff':'#4A3728'}"
               onclick="pickMenu('${m.id}')">
@@ -222,13 +249,35 @@ function render(){
     return;
   }
 
+  // ── 요청사항 입력 ──
+  if(s.screen==="note"){
+    const menu = getMenu(s.pendingMenu);
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:18px"><button class="back-btn" onclick="go('order')">←</button><b style="font-size:17px">요청사항 (선택)</b></div>
+        <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+          <span style="font-size:24px">${menu?menu.emoji:""}</span>
+          <span style="font-weight:700;color:#3A2A1A">${menu?menu.name:""}</span>
+        </div>
+        <p class="section-label" style="margin-top:0">자주 쓰는 요청</p>
+        <div class="quick-tags">
+          ${QUICK_NOTES.map(tag=>`<button class="quick-tag ${s.noteInput.includes(tag)?'on':''}" onclick="toggleQuickNote('${tag}')">${tag}</button>`).join("")}
+        </div>
+        <p class="section-label" style="margin-top:0">직접 입력</p>
+        <textarea class="note-input" rows="3" placeholder="예: 시럽 빼주세요" oninput="state.noteInput=this.value">${s.noteInput}</textarea>
+        <button class="btn-main" onclick="confirmOrder()">주문 완료</button>
+        <button class="btn-ghost" onclick="confirmOrder(true)">요청사항 없이 완료</button>
+      </div>`;
+    return;
+  }
+
   // ── 홈 ──
   if(s.screen==="home"){
     app.innerHTML = `
       <div style="padding-top:56px">
         <div class="center" style="margin-bottom:24px">
           <div style="font-size:48px">☕</div>
-          <h1 style="margin-top:8px">팀 커피 주문</h1>
+          <h1 style="margin-top:8px">PT종합관리팀 커피 주문</h1>
           <div style="font-size:12px;margin-top:4px">${s.connected?'<span class="dot-green">● 실시간 연결됨</span>':'<span class="dot-gray">● 연결 중...</span>'}</div>
         </div>
         <div class="card">
@@ -239,7 +288,8 @@ function render(){
           <div class="progress-bar"><div class="progress-fill" style="width:${progress()}%"></div></div>
           <div style="margin-top:10px">
             ${s.members.map(m=>{
-              const mo=getMenu(s.orders[m]);
+              const o=getOrder(m);
+              const mo=o?getMenu(o.menuId):null;
               return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
                 <span style="color:#555">${m}</span>
                 ${mo?`<span style="color:#5A9E5A">✓ ${mo.emoji} ${mo.name}</span>`:'<span style="color:#ccc">미선택</span>'}
@@ -257,7 +307,7 @@ function render(){
 
   // ── 집계 ──
   if(s.screen==="summary"){
-    const summary = MENU.map(m=>({...m,count:Object.values(s.orders).filter(v=>v===m.id).length})).filter(m=>m.count>0);
+    const summary = MENU.map(m=>({...m,count:Object.values(s.orders).filter(o=>(typeof o==="string"?o:o.menuId)===m.id).length})).filter(m=>m.count>0);
     app.innerHTML = `
       <div style="padding-top:40px">
         <div style="margin-bottom:20px"><button class="back-btn" onclick="go('home')">←</button><b style="font-size:17px">주문 집계</b></div>
@@ -273,11 +323,12 @@ function render(){
         ${summary.length===0?'<p style="color:#bbb;font-size:14px;margin-bottom:16px">아직 주문이 없습니다</p>':""}
         <div class="section-label" style="margin-top:20px">팀원별 주문</div>
         ${s.members.map(m=>{
-          const menu=getMenu(s.orders[m]);
+          const o=getOrder(m);
+          const menu=o?getMenu(o.menuId):null;
           const cat=getCat(menu?.cat);
           return `<div class="row">
             <span class="row-name">${m}</span>
-            ${menu?`<span class="row-menu">${menu.emoji} ${menu.name} <span class="tag" style="background:${cat?.tag};color:${cat?.tagText}">${cat?.label}</span></span>`
+            ${menu?`<span class="row-menu">${menu.emoji} ${menu.name}${o.note?` <span style="color:#8A7355">(${o.note})</span>`:''} <span class="tag" style="background:${cat?.tag};color:${cat?.tagText}">${cat?.label}</span></span>`
                   :'<span style="font-size:12px;color:#ccc">미선택</span>'}
           </div>`;
         }).join("")}
@@ -307,14 +358,33 @@ function render(){
 
 function go(screen){ state.screen=screen; render(); }
 function setTab(t){ state.activeTab=t; render(); }
-function pickName(name){ state.myName=name; state.screen=state.orders[name]?"done":"order"; render(); }
+function pickName(name){
+  state.myName=name;
+  state.screen=getOrder(name)?"done":"order";
+  render();
+}
 function addNewName(){
   const n=(document.getElementById("nameInput")||{value:state.nameInput}).value.trim();
   if(n && !state.members.includes(n)){ saveMembers([...state.members,n]); }
   if(n){ state.myName=n; state.screen="order"; render(); }
 }
 function pickMenu(menuId){
-  saveOrder(state.myName, menuId);
+  state.pendingMenu = menuId;
+  const existing = getOrder(state.myName);
+  state.noteInput = (existing && existing.menuId===menuId) ? (existing.note||"") : "";
+  state.screen = "note";
+  render();
+}
+function toggleQuickNote(tag){
+  const tags = state.noteInput.split(",").map(t=>t.trim()).filter(Boolean);
+  const idx = tags.indexOf(tag);
+  if(idx>=0) tags.splice(idx,1); else tags.push(tag);
+  state.noteInput = tags.join(", ");
+  render();
+}
+function confirmOrder(skipNote){
+  const note = skipNote ? "" : state.noteInput.trim();
+  saveOrder(state.myName, state.pendingMenu, note);
   state.screen="done";
   render();
 }
