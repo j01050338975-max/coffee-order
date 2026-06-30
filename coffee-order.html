@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>팀 커피 주문</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: #F7F4EF; min-height: 100vh; }
+  .wrap { max-width: 440px; margin: 0 auto; padding: 0 20px 40px; }
+  h1 { font-size: 22px; font-weight: 800; color: #3A2A1A; }
+  h2 { font-size: 18px; font-weight: 700; color: #3A2A1A; }
+  .sub { font-size: 13px; color: #999; margin-top: 4px; }
+  .card { background: #fff; border: 1px solid #E8E2D8; border-radius: 16px; padding: 18px; margin-bottom: 14px; }
+  .btn-main { display: block; width: 100%; padding: 14px; background: #6F4E37; color: #fff; border: none; border-radius: 14px; font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 10px; }
+  .btn-sub  { display: block; width: 100%; padding: 13px; background: #EDE8DF; color: #7A5C3E; border: 1px solid #D8CFBF; border-radius: 14px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
+  .btn-ghost { display: block; width: 100%; padding: 13px; background: transparent; color: #999; border: 1px solid #D8CFBF; border-radius: 14px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
+  .progress-bar { width: 100%; background: #EDE8DF; border-radius: 99px; height: 8px; margin: 8px 0 4px; }
+  .progress-fill { height: 8px; background: #6F4E37; border-radius: 99px; transition: width 0.4s; }
+  .member-btn { display: block; width: 100%; padding: 16px; background: #fff; border: 2px solid #E8E2D8; border-radius: 14px; font-size: 15px; font-weight: 700; color: #4A3728; cursor: pointer; margin-bottom: 8px; text-align: left; }
+  .member-btn.done { border-color: #A8D8A8; color: #3A7A3A; }
+  .tabs { display: flex; gap: 4px; background: #E8E2D8; border-radius: 12px; padding: 4px; margin-bottom: 14px; }
+  .tab { flex: 1; padding: 9px; border: none; background: transparent; border-radius: 9px; font-size: 13px; font-weight: 700; color: #999; cursor: pointer; transition: all 0.15s; }
+  .tab.active { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+  .tab.active.hot  { color: #C04000; }
+  .tab.active.ice  { color: #1E4DB4; }
+  .tab.active.other{ color: #7C3D8C; }
+  .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .menu-btn { padding: 16px; background: #fff; border: 2px solid #E8E2D8; border-radius: 14px; text-align: left; cursor: pointer; transition: all 0.15s; }
+  .menu-btn.chosen { color: #fff; }
+  .menu-emoji { font-size: 22px; margin-bottom: 6px; }
+  .menu-name  { font-size: 13px; font-weight: 700; line-height: 1.3; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; background: #fff; border: 1px solid #E8E2D8; border-radius: 12px; margin-bottom: 7px; }
+  .row-name { font-size: 13px; font-weight: 700; color: #3A2A1A; }
+  .row-menu { font-size: 12px; color: #666; }
+  .row-count { font-size: 17px; font-weight: 800; color: #6F4E37; }
+  .input-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .input-row input { flex: 1; padding: 11px 14px; border: 1.5px solid #D8D0C0; border-radius: 12px; font-size: 14px; outline: none; background: #fff; }
+  .input-row button { padding: 11px 18px; background: #6F4E37; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 14px; cursor: pointer; }
+  .back-btn { background: none; border: none; font-size: 22px; color: #999; cursor: pointer; margin-right: 10px; vertical-align: middle; }
+  .dot-green { color: #5A9E5A; font-size: 12px; }
+  .dot-gray  { color: #bbb; font-size: 12px; }
+  .section-label { font-size: 11px; font-weight: 700; letter-spacing: 0.05em; color: #999; margin-bottom: 8px; margin-top: 16px; text-transform: uppercase; }
+  .hint-box { background: #EDE8DF; border: 1px solid #D8CFBF; border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #7A5C3E; }
+  .big-emoji { font-size: 56px; text-align: center; margin-bottom: 10px; }
+  .center { text-align: center; }
+  .small-link { background: none; border: none; color: #bbb; font-size: 12px; cursor: pointer; margin-top: 8px; display: block; text-align: center; }
+  .member-status { font-size: 11px; font-weight: 600; margin-left: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAiTfYdr8exzMGV3UszUNSce7_53ep5UF0",
+  authDomain: "team-coffee-order.firebaseapp.com",
+  databaseURL: "https://team-coffee-order-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "team-coffee-order",
+  storageBucket: "team-coffee-order.firebasestorage.app",
+  messagingSenderId: "830077337499",
+  appId: "1:830077337499:web:95c3368ff97e3a89a26b3e",
+  measurementId: "G-PW9C2P0VVX"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+const MENU = [
+  { id:"hot_americano",         cat:"hot",   name:"아메리카노",       emoji:"☕", color:"#6F4E37" },
+  { id:"hot_latte",             cat:"hot",   name:"카페라떼",         emoji:"☕", color:"#C8956C" },
+  { id:"hot_vanilla",           cat:"hot",   name:"바닐라라떼",       emoji:"☕", color:"#D4A017" },
+  { id:"hot_greentea",          cat:"hot",   name:"녹차라떼",         emoji:"🍵", color:"#5A9E5A" },
+  { id:"hot_toffeenut",         cat:"hot",   name:"토피넛라떼",       emoji:"☕", color:"#A0662A" },
+  { id:"hot_misugaru",          cat:"hot",   name:"미숫가루라떼",     emoji:"🌾", color:"#B89A60" },
+  { id:"ice_americano",         cat:"ice",   name:"아메리카노",       emoji:"🧊", color:"#4A90D9" },
+  { id:"ice_latte",             cat:"ice",   name:"카페라떼",         emoji:"🧊", color:"#7EB8F7" },
+  { id:"ice_vanilla",           cat:"ice",   name:"바닐라라떼",       emoji:"🧊", color:"#A8C8F0" },
+  { id:"ice_greentea",          cat:"ice",   name:"녹차라떼",         emoji:"🍵", color:"#7BC47B" },
+  { id:"ice_toffeenut",         cat:"ice",   name:"토피넛라떼",       emoji:"🧊", color:"#7AAAD4" },
+  { id:"ice_misugaru",          cat:"ice",   name:"미숫가루라떼",     emoji:"🧊", color:"#9EB8D8" },
+  { id:"etc_strawberry_banana", cat:"other", name:"딸기바나나주스",   emoji:"🍓", color:"#F08080" },
+  { id:"etc_banana",            cat:"other", name:"바나나주스",       emoji:"🍌", color:"#F5C542" },
+  { id:"etc_strawberry_yogurt", cat:"other", name:"딸기요거트스무디", emoji:"🍓", color:"#E87070" },
+  { id:"etc_yogurt",            cat:"other", name:"요거트스무디",     emoji:"🥛", color:"#D4AACC" },
+];
+const CATS = [
+  { id:"hot",   label:"HOT",  icon:"🔥", accent:"#C04000", tag:"#FEE2D0", tagText:"#C04000" },
+  { id:"ice",   label:"ICE",  icon:"🧊", accent:"#1E4DB4", tag:"#DBEAFE", tagText:"#1E4DB4" },
+  { id:"other", label:"기타", icon:"🥤", accent:"#7C3D8C", tag:"#EDD6F5", tagText:"#7C3D8C" },
+];
+
+let state = {
+  screen: "name",   // name | home | order | done | summary | settings
+  myName: "",
+  members: ["김민준","이서연","박지호","최수아","정도윤"],
+  orders: {},
+  history: {},
+  activeTab: "hot",
+  connected: false,
+  nameInput: "",
+  newMember: "",
+};
+
+function getMenu(id){ return MENU.find(m=>m.id===id); }
+function getCat(id){ return CATS.find(c=>c.id===id); }
+function totalOrdered(){ return Object.keys(state.orders).length; }
+function progress(){ return state.members.length ? Math.round(totalOrdered()/state.members.length*100) : 0; }
+
+// Firebase 리스너
+db.ref("orders").on("value", snap => { state.orders = snap.val()||{}; state.connected=true; render(); });
+db.ref("history").on("value", snap => { state.history = snap.val()||{}; render(); });
+db.ref("members").on("value", snap => { if(snap.val()) state.members = snap.val(); render(); });
+
+function saveMembers(list){ state.members=list; db.ref("members").set(list); }
+function saveOrder(name, menuId){ db.ref("orders/"+name).set(menuId); }
+function removeOrder(name){ db.ref("orders/"+name).remove(); }
+
+function resetOrders(){
+  const h = {...state.history};
+  Object.entries(state.orders).forEach(([m,id])=>{
+    if(!h[m]) h[m]=[];
+    h[m]=[id,...h[m]].slice(0,10);
+  });
+  db.ref("history").set(h);
+  db.ref("orders").remove();
+  state.screen="home";
+  render();
+}
+
+function render(){
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+  const s = state;
+
+  // ── 이름 선택 ──
+  if(s.screen==="name"){
+    app.innerHTML = `
+      <div style="padding-top:60px">
+        <div class="center" style="margin-bottom:28px">
+          <div style="font-size:52px">☕</div>
+          <h1 style="margin-top:8px">팀 커피 주문</h1>
+          <div class="sub">내 이름을 선택하세요</div>
+          <div style="margin-top:6px; font-size:12px">${s.connected?'<span class="dot-green">● 실시간 연결됨</span>':'<span class="dot-gray">● 연결 중...</span>'}</div>
+        </div>
+        ${s.members.map(m=>{
+          const menu = getMenu(s.orders[m]);
+          return `<button class="member-btn ${menu?'done':''}" onclick="pickName('${m}')">
+            ${m}${menu?`<span class="member-status" style="color:#5A9E5A">✓ ${menu.emoji} ${menu.name}</span>`:''}
+          </button>`;
+        }).join("")}
+        <div class="section-label" style="margin-top:20px">목록에 없으면</div>
+        <div class="input-row">
+          <input id="nameInput" placeholder="이름 직접 입력" value="${s.nameInput}"
+            oninput="state.nameInput=this.value" onkeydown="if(event.key==='Enter')addNewName()">
+          <button onclick="addNewName()">확인</button>
+        </div>
+      </div>`;
+    return;
+  }
+
+  // ── 주문 완료 ──
+  if(s.screen==="done"){
+    const menu = getMenu(s.orders[s.myName]);
+    app.innerHTML = `
+      <div style="padding-top:60px">
+        <div class="big-emoji">${menu?menu.emoji:"☕"}</div>
+        <div class="center">
+          <h2>${menu?menu.name:"주문 완료"}</h2>
+          <div class="sub" style="margin-top:4px">주문이 접수됐어요!</div>
+        </div>
+        <div class="card" style="margin-top:24px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;color:#666">팀 전체 현황</span>
+            <span style="font-size:12px;color:#999">${totalOrdered()}/${s.members.length}명</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${progress()}%"></div></div>
+          <div style="margin-top:10px">
+            ${s.members.map(m=>{
+              const mo=getMenu(s.orders[m]);
+              return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
+                <span style="color:#555">${m}</span>
+                ${mo?`<span style="color:#5A9E5A">✓ ${mo.emoji} ${mo.name}</span>`:'<span style="color:#ccc">미선택</span>'}
+              </div>`;
+            }).join("")}
+          </div>
+        </div>
+        <button class="btn-sub" onclick="go('order')">메뉴 변경하기</button>
+        <button class="btn-main" onclick="go('summary')">전체 주문 보기</button>
+        <button class="small-link" onclick="go('name')">다른 사람으로 변경</button>
+      </div>`;
+    return;
+  }
+
+  // ── 메뉴 선택 ──
+  if(s.screen==="order"){
+    const recentHistory = (s.history[s.myName]||[]).slice(0,3).map(id=>getMenu(id)).filter(Boolean);
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+          <div><button class="back-btn" onclick="go('${s.orders[s.myName]?'done':'home'}')">←</button><b>${s.myName}</b>님, 메뉴를 선택하세요</div>
+        </div>
+        ${recentHistory.length?`<div class="hint-box">지난번: ${recentHistory.map(m=>`${m.emoji} ${m.name}`).join(" · ")}</div>`:""}
+        <div class="tabs">
+          ${CATS.map(c=>`<button class="tab ${s.activeTab===c.id?'active '+c.id:''}" onclick="setTab('${c.id}')">${c.icon} ${c.label}</button>`).join("")}
+        </div>
+        <div class="menu-grid">
+          ${MENU.filter(m=>m.cat===s.activeTab).map(m=>{
+            const chosen = s.orders[s.myName]===m.id;
+            return `<button class="menu-btn ${chosen?'chosen':''}"
+              style="background:${chosen?m.color:'#fff'};border-color:${chosen?m.color:'#E8E2D8'};color:${chosen?'#fff':'#4A3728'}"
+              onclick="pickMenu('${m.id}')">
+              <div class="menu-emoji">${m.emoji}</div>
+              <div class="menu-name">${m.name}</div>
+              ${chosen?'<div style="font-size:11px;margin-top:4px;opacity:0.8">✓ 선택됨</div>':''}
+            </button>`;
+          }).join("")}
+        </div>
+      </div>`;
+    return;
+  }
+
+  // ── 홈 ──
+  if(s.screen==="home"){
+    app.innerHTML = `
+      <div style="padding-top:56px">
+        <div class="center" style="margin-bottom:24px">
+          <div style="font-size:48px">☕</div>
+          <h1 style="margin-top:8px">팀 커피 주문</h1>
+          <div style="font-size:12px;margin-top:4px">${s.connected?'<span class="dot-green">● 실시간 연결됨</span>':'<span class="dot-gray">● 연결 중...</span>'}</div>
+        </div>
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;color:#666">이번 주 주문 현황</span>
+            <span style="font-size:12px;color:#999">${totalOrdered()}/${s.members.length}명</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${progress()}%"></div></div>
+          <div style="margin-top:10px">
+            ${s.members.map(m=>{
+              const mo=getMenu(s.orders[m]);
+              return `<div style="display:flex;justify-content:space-between;font-size:12px;padding:3px 0">
+                <span style="color:#555">${m}</span>
+                ${mo?`<span style="color:#5A9E5A">✓ ${mo.emoji} ${mo.name}</span>`:'<span style="color:#ccc">미선택</span>'}
+              </div>`;
+            }).join("")}
+          </div>
+        </div>
+        <button class="btn-main" onclick="go('order')">내 메뉴 선택하기</button>
+        ${totalOrdered()>0?`<button class="btn-sub" onclick="go('summary')">전체 집계 보기 (${totalOrdered()}건)</button>`:""}
+        <button class="btn-ghost" onclick="go('settings')">팀원 관리</button>
+        <button class="small-link" onclick="go('name')">다른 사람으로 변경</button>
+      </div>`;
+    return;
+  }
+
+  // ── 집계 ──
+  if(s.screen==="summary"){
+    const summary = MENU.map(m=>({...m,count:Object.values(s.orders).filter(v=>v===m.id).length})).filter(m=>m.count>0);
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:20px"><button class="back-btn" onclick="go('home')">←</button><b style="font-size:17px">주문 집계</b></div>
+        ${CATS.map(cat=>{
+          const items=summary.filter(m=>m.cat===cat.id);
+          if(!items.length) return "";
+          return `<div class="section-label" style="color:${cat.accent}">${cat.icon} ${cat.label}</div>
+            ${items.map(m=>`<div class="row">
+              <div><span style="margin-right:6px">${m.emoji}</span><span class="row-name">${m.name}</span></div>
+              <span class="row-count">${m.count}잔</span>
+            </div>`).join("")}`;
+        }).join("")}
+        ${summary.length===0?'<p style="color:#bbb;font-size:14px;margin-bottom:16px">아직 주문이 없습니다</p>':""}
+        <div class="section-label" style="margin-top:20px">팀원별 주문</div>
+        ${s.members.map(m=>{
+          const menu=getMenu(s.orders[m]);
+          const cat=getCat(menu?.cat);
+          return `<div class="row">
+            <span class="row-name">${m}</span>
+            ${menu?`<span class="row-menu">${menu.emoji} ${menu.name} <span class="tag" style="background:${cat?.tag};color:${cat?.tagText}">${cat?.label}</span></span>`
+                  :'<span style="font-size:12px;color:#ccc">미선택</span>'}
+          </div>`;
+        }).join("")}
+        <button class="btn-sub" style="margin-top:20px" onclick="confirmReset()">주문 마감 & 이력 저장</button>
+      </div>`;
+    return;
+  }
+
+  // ── 팀원 관리 ──
+  if(s.screen==="settings"){
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:20px"><button class="back-btn" onclick="go('home')">←</button><b style="font-size:17px">팀원 관리</b></div>
+        <div class="input-row">
+          <input id="newMemberInput" placeholder="이름 입력 후 추가" onkeydown="if(event.key==='Enter')addMember()">
+          <button onclick="addMember()">추가</button>
+        </div>
+        ${s.members.map(m=>`
+          <div class="row">
+            <span class="row-name">${m}</span>
+            <button onclick="removeMember('${m}')" style="background:none;border:none;color:#bbb;font-size:13px;cursor:pointer">삭제</button>
+          </div>`).join("")}
+      </div>`;
+    return;
+  }
+}
+
+function go(screen){ state.screen=screen; render(); }
+function setTab(t){ state.activeTab=t; render(); }
+function pickName(name){ state.myName=name; state.screen=state.orders[name]?"done":"order"; render(); }
+function addNewName(){
+  const n=(document.getElementById("nameInput")||{value:state.nameInput}).value.trim();
+  if(n && !state.members.includes(n)){ saveMembers([...state.members,n]); }
+  if(n){ state.myName=n; state.screen="order"; render(); }
+}
+function pickMenu(menuId){
+  saveOrder(state.myName, menuId);
+  state.screen="done";
+  render();
+}
+function addMember(){
+  const inp=document.getElementById("newMemberInput");
+  const n=inp?inp.value.trim():"";
+  if(n && !state.members.includes(n)) saveMembers([...state.members,n]);
+  if(inp) inp.value="";
+}
+function removeMember(name){
+  if(!confirm(name+"님을 삭제할까요?")) return;
+  saveMembers(state.members.filter(m=>m!==name));
+  removeOrder(name);
+}
+function confirmReset(){
+  if(!confirm("주문을 마감하고 이력을 저장할까요?\n다음 회의를 위해 주문이 초기화됩니다.")) return;
+  resetOrders();
+}
+
+render();
+</script>
+</body>
+</html>
