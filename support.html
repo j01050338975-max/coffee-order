@@ -1,0 +1,696 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>PT지원팀 커피 주문</title>
+<meta property="og:title" content="PT지원팀 커피 주문">
+<meta property="og:description" content="여기를 눌러 메뉴를 선택하세요.">
+<meta property="og:type" content="website">
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+  body { font-family: 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif; background: #F7F4EF; min-height: 100vh; }
+  .wrap { max-width: 440px; margin: 0 auto; padding: 0 20px 40px; }
+  h1 { font-size: 22px; font-weight: 800; color: #3A2A1A; }
+  h2 { font-size: 18px; font-weight: 700; color: #3A2A1A; }
+  .sub { font-size: 13px; color: #999; margin-top: 4px; }
+  .card { background: #fff; border: 1px solid #E8E2D8; border-radius: 16px; padding: 18px; margin-bottom: 14px; }
+  .btn-main { display: block; width: 100%; padding: 14px; background: #6F4E37; color: #fff; border: none; border-radius: 14px; font-size: 15px; font-weight: 700; cursor: pointer; margin-bottom: 10px; }
+  .btn-sub  { display: block; width: 100%; padding: 13px; background: #EDE8DF; color: #7A5C3E; border: 1px solid #D8CFBF; border-radius: 14px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
+  .btn-ghost { display: block; width: 100%; padding: 13px; background: transparent; color: #999; border: 1px solid #D8CFBF; border-radius: 14px; font-size: 14px; font-weight: 600; cursor: pointer; margin-bottom: 10px; }
+  .progress-bar { width: 100%; background: #EDE8DF; border-radius: 99px; height: 8px; margin: 8px 0 4px; }
+  .progress-fill { height: 8px; background: #6F4E37; border-radius: 99px; transition: width 0.4s; }
+  .member-btn { display: block; width: 100%; padding: 16px; background: #fff; border: 2px solid #E8E2D8; border-radius: 14px; font-size: 15px; font-weight: 700; color: #4A3728; cursor: pointer; margin-bottom: 8px; text-align: left; }
+  .member-btn.done { border-color: #A8D8A8; color: #3A7A3A; }
+  .team-btn { display: flex; align-items: center; justify-content: space-between; width: 100%; padding: 18px 16px; background: #fff; border: 2px solid #E8E2D8; border-radius: 14px; cursor: pointer; margin-bottom: 10px; text-align: left; }
+  .team-name { font-size: 16px; font-weight: 800; color: #3A2A1A; }
+  .team-meta { font-size: 12px; color: #999; margin-top: 3px; }
+  .team-count { font-size: 15px; font-weight: 800; color: #6F4E37; white-space: nowrap; }
+  .tabs { display: flex; gap: 4px; background: #E8E2D8; border-radius: 12px; padding: 4px; margin-bottom: 14px; }
+  .tab { flex: 1; padding: 9px 2px; border: none; background: transparent; border-radius: 9px; font-size: 12px; font-weight: 700; color: #999; cursor: pointer; transition: all 0.15s; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tab.active { background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.1); color: #3A2A1A; }
+  .tab.active.hot  { color: #C04000; }
+  .tab.active.ice  { color: #1E4DB4; }
+  .tab.active.other{ color: #7C3D8C; }
+  .menu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 20px; }
+  .menu-btn { padding: 16px; background: #fff; border: 2px solid #E8E2D8; border-radius: 14px; text-align: left; cursor: pointer; transition: all 0.15s; }
+  .menu-emoji { font-size: 22px; margin-bottom: 6px; }
+  .menu-name  { font-size: 13px; font-weight: 700; line-height: 1.3; }
+  .tag { display: inline-block; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+  .row { display: flex; align-items: center; justify-content: space-between; padding: 11px 14px; background: #fff; border: 1px solid #E8E2D8; border-radius: 12px; margin-bottom: 7px; }
+  .row-name { font-size: 13px; font-weight: 700; color: #3A2A1A; }
+  .row-menu { font-size: 12px; color: #666; }
+  .row-count { font-size: 17px; font-weight: 800; color: #6F4E37; }
+  .input-row { display: flex; gap: 8px; margin-bottom: 14px; }
+  .input-row input { flex: 1; min-width: 0; padding: 11px 14px; border: 1.5px solid #D8D0C0; border-radius: 12px; font-size: 14px; outline: none; background: #fff; }
+  .input-row button { padding: 11px 18px; background: #6F4E37; color: #fff; border: none; border-radius: 12px; font-weight: 700; font-size: 14px; cursor: pointer; white-space: nowrap; }
+  .back-btn { background: none; border: none; font-size: 22px; color: #999; cursor: pointer; margin-right: 10px; vertical-align: middle; }
+  .dot-green { color: #5A9E5A; font-size: 12px; }
+  .dot-gray  { color: #bbb; font-size: 12px; }
+  .section-label { font-size: 12px; font-weight: 700; color: #999; margin-bottom: 8px; margin-top: 16px; }
+  .hint-box { background: #EDE8DF; border: 1px solid #D8CFBF; border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; font-size: 12px; color: #7A5C3E; }
+  .big-emoji { font-size: 56px; text-align: center; margin-bottom: 10px; }
+  .center { text-align: center; }
+  .small-link { background: none; border: none; color: #bbb; font-size: 12px; cursor: pointer; margin-top: 8px; display: block; text-align: center; width: 100%; }
+  .member-status { font-size: 11px; font-weight: 600; margin-left: 6px; }
+  .note-tag { font-size: 11px; color: #8A7355; margin-top: 4px; }
+  textarea.note-input { width:100%; padding:12px 14px; border:1.5px solid #D8D0C0; border-radius:12px; font-size:14px; outline:none; background:#fff; resize:none; font-family:inherit; margin-bottom:10px; }
+  .quick-tags { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:14px; }
+  .quick-tag { padding:7px 12px; background:#fff; border:1.5px solid #E8E2D8; border-radius:99px; font-size:12px; font-weight:600; color:#7A5C3E; cursor:pointer; }
+  .quick-tag.on { background:#6F4E37; border-color:#6F4E37; color:#fff; }
+  /* 집계 카드 */
+  .sum-card { background:#fff; border:1px solid #E8E2D8; border-radius:14px; padding:14px 16px; margin-bottom:10px; }
+  .sum-head { display:flex; align-items:center; justify-content:space-between; }
+  .sum-title { font-size:14px; font-weight:800; color:#3A2A1A; }
+  .sum-count { font-size:18px; font-weight:800; color:#6F4E37; }
+  .sum-names { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .chip { display:inline-flex; align-items:center; gap:4px; padding:5px 10px; background:#F7F4EF; border:1px solid #E8E2D8; border-radius:99px; font-size:12px; font-weight:600; color:#4A3728; }
+  .chip .chip-note { color:#8A7355; font-weight:500; }
+  .chip .chip-team { color:#aaa; font-weight:500; font-size:11px; }
+  .status-line { display:flex; justify-content:space-between; font-size:12px; padding:3px 0; }
+  .copy-box { width:100%; padding:12px 14px; border:1.5px solid #D8D0C0; border-radius:12px; font-size:12px; background:#fff; font-family:inherit; color:#4A3728; white-space:pre-wrap; line-height:1.5; margin-bottom:10px; }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"></div>
+
+<script>
+const firebaseConfig = {
+  apiKey: "AIzaSyAiTfYdr8exzMGV3UszUNSce7_53ep5UF0",
+  authDomain: "team-coffee-order.firebaseapp.com",
+  databaseURL: "https://team-coffee-order-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "team-coffee-order",
+  storageBucket: "team-coffee-order.firebasestorage.app",
+  messagingSenderId: "830077337499",
+  appId: "1:830077337499:web:95c3368ff97e3a89a26b3e",
+  measurementId: "G-PW9C2P0VVX"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+// 기존 앱과 데이터가 섞이지 않도록 별도 경로 사용
+const ROOT = "support";   // 지원팀 전용 데이터 경로
+const SINGLE_TEAM = "PT지원팀";
+const ref = p => db.ref(ROOT + "/" + p);
+
+const MENU = [
+  { id:"hot_americano",         cat:"hot",   name:"아메리카노",       emoji:"☕", color:"#6F4E37" },
+  { id:"hot_latte",             cat:"hot",   name:"카페라떼",         emoji:"☕", color:"#C8956C" },
+  { id:"hot_vanilla",           cat:"hot",   name:"바닐라라떼",       emoji:"☕", color:"#D4A017" },
+  { id:"hot_greentea",          cat:"hot",   name:"녹차라떼",         emoji:"🍵", color:"#5A9E5A" },
+  { id:"hot_toffeenut",         cat:"hot",   name:"토피넛라떼",       emoji:"☕", color:"#A0662A" },
+  { id:"hot_misugaru",          cat:"hot",   name:"미숫가루라떼",     emoji:"🌾", color:"#B89A60" },
+  { id:"hot_caramel_macchiato", cat:"hot",   name:"카라멜 마끼야또",  emoji:"☕", color:"#B8773A" },
+  { id:"ice_americano",         cat:"ice",   name:"아메리카노",       emoji:"🧊", color:"#4A90D9" },
+  { id:"ice_latte",             cat:"ice",   name:"카페라떼",         emoji:"🧊", color:"#7EB8F7" },
+  { id:"ice_vanilla",           cat:"ice",   name:"바닐라라떼",       emoji:"🧊", color:"#A8C8F0" },
+  { id:"ice_greentea",          cat:"ice",   name:"녹차라떼",         emoji:"🍵", color:"#7BC47B" },
+  { id:"ice_toffeenut",         cat:"ice",   name:"토피넛라떼",       emoji:"🧊", color:"#7AAAD4" },
+  { id:"ice_misugaru",          cat:"ice",   name:"미숫가루라떼",     emoji:"🧊", color:"#9EB8D8" },
+  { id:"ice_caramel_macchiato", cat:"ice",   name:"카라멜 마끼야또",  emoji:"🧊", color:"#6FA8DC" },
+  { id:"etc_strawberry_banana", cat:"other", name:"딸기바나나주스",   emoji:"🍓", color:"#F08080" },
+  { id:"etc_banana",            cat:"other", name:"바나나주스",       emoji:"🍌", color:"#F5C542" },
+  { id:"etc_strawberry_yogurt", cat:"other", name:"딸기요거트스무디", emoji:"🍓", color:"#E87070" },
+  { id:"etc_yogurt",            cat:"other", name:"요거트스무디",     emoji:"🥛", color:"#D4AACC" },
+  { id:"etc_peppermint",        cat:"other", name:"페퍼민트",         emoji:"🌿", color:"#4FAE8C" },
+  { id:"etc_chamomile",         cat:"other", name:"캐모마일",         emoji:"🌼", color:"#E8B84B" },
+  { id:"etc_bundaberg",         cat:"other", name:"분다버그",         emoji:"🍾", color:"#C97A3D" },
+];
+const CATS = [
+  { id:"hot",   label:"HOT",  icon:"🔥", accent:"#C04000", tag:"#FEE2D0", tagText:"#C04000" },
+  { id:"ice",   label:"ICE",  icon:"🧊", accent:"#1E4DB4", tag:"#DBEAFE", tagText:"#1E4DB4" },
+  { id:"other", label:"기타", icon:"🥤", accent:"#7C3D8C", tag:"#EDD6F5", tagText:"#7C3D8C" },
+];
+
+// 기본 팀 구성 (Firebase에 저장된 값이 있으면 그걸 우선 사용)
+const DEFAULT_TEAMS = {
+  "PT지원팀": ["정종희","강춘태","유형석","정성혁","변정수","박민준","한서희"],
+};
+// 팀 표시 순서 (여기 없는 팀은 뒤에 붙음)
+const TEAM_ORDER = ["PT지원실장","PT종합관리팀","PT품질기획팀","PT지원팀"];
+const QUICK_NOTES = ["연하게", "샷 추가", "얼음 적게", "당도 조절", "라지 사이즈"];
+
+let state = {
+  screen: "name",   // name | order | note | done | summary | settings
+  myTeam: SINGLE_TEAM,
+  myName: "",
+  teams: {...DEFAULT_TEAMS},   // { 팀명: [이름, ...] }
+  orders: {},                  // { 팀명: { 이름: {menuId, note, customName} } }
+  history: {},                 // { 팀명: { 이름: [menuId, ...] } }
+  activeTab: "hot",
+  connected: false,
+  pendingMenu: "",
+  pendingCustomName: "",
+  noteInput: "",
+  customMenuInput: "",
+  summaryScope: SINGLE_TEAM,
+  summaryView: "menu",         // "menu" | "member"
+  settingsTeam: "",
+  showCopy: false,
+  lastClosed: null,            // 마지막 마감 스냅샷 { at, orders }
+};
+
+// ── 유틸 ──
+const enc = s => encodeURIComponent(s);
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+function teamNames(){
+  const rank = t => { const i=TEAM_ORDER.indexOf(t); return i<0?999:i; };
+  return Object.keys(state.teams).sort((a,b)=>rank(a)-rank(b) || a.localeCompare(b,"ko"));
+}
+function membersOf(team){ return state.teams[team] || []; }
+function getMenu(id){ return MENU.find(m=>m.id===id); }
+function getCat(id){ return CATS.find(c=>c.id===id); }
+function normOrder(o){
+  if(!o) return null;
+  if(typeof o === "string") return { menuId:o, note:"" };
+  return o;
+}
+function getOrder(team, name){ return normOrder(state.orders?.[team]?.[name]); }
+// 지난 마감 데이터: 스냅샷이 있으면 그것, 없으면 이력의 최근 1건으로 복원
+function lastOrdersSource(){
+  if(state.lastClosed?.orders) return { orders: state.lastClosed.orders, at: state.lastClosed.at, fromHistory:false };
+  const o = {};
+  Object.entries(state.history||{}).forEach(([t,people])=>{
+    Object.entries(people||{}).forEach(([n,arr])=>{
+      const list = Array.isArray(arr)?arr:Object.values(arr||{});
+      if(list[0]){ if(!o[t]) o[t]={}; o[t][n]={ menuId:list[0], note:"" }; }
+    });
+  });
+  return { orders:o, at:null, fromHistory:true };
+}
+function getDisplayMenu(order){
+  if(!order) return null;
+  if(order.customName) return { emoji:"✍️", name:order.customName, cat:"other", key:"custom:"+order.customName };
+  const m = getMenu(order.menuId);
+  return m ? {...m, key:m.id} : null;
+}
+function menuLabel(menu){
+  if(!menu) return "";
+  const cat = getCat(menu.cat);
+  return menu.cat==="other" ? menu.name : `${menu.name}(${cat.label})`;
+}
+function teamOrderedCount(team){ return membersOf(team).filter(n=>getOrder(team,n)).length; }
+function totalMembers(){ return teamNames().reduce((a,t)=>a+membersOf(t).length,0); }
+function totalOrdered(){ return teamNames().reduce((a,t)=>a+teamOrderedCount(t),0); }
+function progressOf(done,total){ return total ? Math.round(done/total*100) : 0; }
+function connStatus(){ return state.connected?'<span class="dot-green">● 실시간 연결됨</span>':'<span class="dot-gray">● 연결 중...</span>'; }
+
+// ── Firebase ──
+ref("orders").on("value", snap => { state.orders = snap.val()||{}; state.connected=true; render(); });
+ref("history").on("value", snap => { state.history = snap.val()||{}; render(); });
+ref("lastClosed").on("value", snap => { state.lastClosed = snap.val()||null; render(); });
+ref("teams").on("value", snap => {
+  const v = snap.val();
+  if(v && Object.keys(v).length){
+    // Firebase는 빈 배열을 저장하지 않으므로 보정
+    const t = {}; Object.entries(v).forEach(([k,arr])=>{ t[k]=Array.isArray(arr)?arr.filter(Boolean):Object.values(arr||{}); });
+    // 코드에 새로 추가된 기본 팀이 DB에 없으면 자동 추가
+    let missing=false;
+    Object.entries(DEFAULT_TEAMS).forEach(([k,arr])=>{ if(!t[k]){ t[k]=arr; missing=true; } });
+    state.teams = t;
+    if(missing) ref("teams").set(t);
+  } else {
+    ref("teams").set(DEFAULT_TEAMS);
+  }
+  render();
+});
+
+function saveTeams(t){ state.teams=t; ref("teams").set(t); }
+function saveOrder(team, name, menuId, note, customName){
+  const payload = { menuId: menuId||"", note: note||"" };
+  if(customName) payload.customName = customName;
+  ref("orders/"+team+"/"+name).set(payload);
+}
+function removeOrder(team, name){ ref("orders/"+team+"/"+name).remove(); }
+
+// 마감: team이 null이면 전체 마감
+function resetOrders(team){
+  const targets = team ? [team] : teamNames();
+  // 마감 스냅샷 저장 (요청사항 포함) → 지난 마감 내역에서 복원 가능
+  ref("lastClosed").set({ at: Date.now(), orders: JSON.parse(JSON.stringify(state.orders||{})) });
+  const h = JSON.parse(JSON.stringify(state.history||{}));
+  targets.forEach(t=>{
+    Object.entries(state.orders[t]||{}).forEach(([name,o])=>{
+      const menuId = typeof o === "string" ? o : (o.customName ? "" : o.menuId);
+      if(!h[t]) h[t]={};
+      if(!h[t][name]) h[t][name]=[];
+      if(menuId) h[t][name]=[menuId,...h[t][name]].slice(0,10);
+    });
+  });
+  ref("history").set(h);
+  if(team) ref("orders/"+team).remove(); else ref("orders").remove();
+  state.screen = "name"; state.myName = "";
+  render();
+}
+
+// ── 집계 데이터 ──
+function collectEntries(scope, src){
+  const teams = scope==="all" ? teamNames() : [scope];
+  const list = [];
+  teams.forEach(t=>{
+    membersOf(t).forEach(n=>{
+      const o = src ? normOrder(src?.[t]?.[n]) : getOrder(t,n);
+      if(!o) return;
+      const menu = getDisplayMenu(o);
+      if(!menu) return;
+      list.push({ team:t, name:n, order:o, menu });
+    });
+  });
+  return list;
+}
+function groupByMenu(entries){
+  const g = {};
+  entries.forEach(e=>{
+    if(!g[e.menu.key]) g[e.menu.key] = { menu:e.menu, people:[] };
+    g[e.menu.key].people.push(e);
+  });
+  // 카테고리 순서(HOT→ICE→기타→직접입력) → 잔 수 많은 순
+  const catOrder = { hot:0, ice:1, other:2 };
+  return Object.values(g).sort((a,b)=>{
+    const ca = a.menu.key.startsWith("custom:") ? 3 : catOrder[a.menu.cat];
+    const cb = b.menu.key.startsWith("custom:") ? 3 : catOrder[b.menu.cat];
+    if(ca!==cb) return ca-cb;
+    return b.people.length - a.people.length;
+  });
+}
+function buildCopyText(scope, src){
+  const groups = groupByMenu(collectEntries(scope, src));
+  const title = (scope==="all" ? "전체" : scope) + (src ? " 지난 마감" : "");
+  const lines = [`[${title} 커피 주문] 총 ${groups.reduce((a,g)=>a+g.people.length,0)}잔`];
+  groups.forEach(g=>{
+    const names = g.people.map(p=>{
+      let s = p.name;
+      if(scope==="all") s += `(${p.team.replace(/^PT/,"")}`+(p.order.note?`·${p.order.note}`:"")+")";
+      else if(p.order.note) s += `(${p.order.note})`;
+      return s;
+    }).join(", ");
+    lines.push(`- ${menuLabel(g.menu)} ${g.people.length}잔: ${names}`);
+  });
+  return lines.join("\n");
+}
+function copyText(src){
+  const txt = buildCopyText(state.summaryScope, src ? lastOrdersSource().orders : null);
+  if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>alert("복사됐어요!")).catch(()=>{ state.showCopy=true; render(); }); }
+  else { state.showCopy=true; render(); }
+}
+
+// ── 렌더 ──
+function render(){
+  const app = document.getElementById("app");
+  app.innerHTML = "";
+  const s = state;
+
+  // 팀 선택
+  if(s.screen==="team"){
+    app.innerHTML = `
+      <div style="padding-top:60px">
+        <div class="center" style="margin-bottom:28px">
+          <div style="font-size:52px">☕</div>
+          <h1 style="margin-top:8px">PT지원실 커피 주문</h1>
+          <div class="sub">소속 팀을 선택하세요</div>
+          <div style="margin-top:6px;font-size:12px">${connStatus()}</div>
+        </div>
+        ${teamNames().map(t=>`
+          <button class="team-btn" onclick="pickTeam('${enc(t)}')">
+            <div>
+              <div class="team-name">${esc(t)}</div>
+              <div class="team-meta">${membersOf(t).length}명</div>
+            </div>
+            <div class="team-count">${teamOrderedCount(t)}/${membersOf(t).length}</div>
+          </button>`).join("")}
+        <div class="card" style="margin-top:20px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;color:#666">전체 주문 현황</span>
+            <span style="font-size:12px;color:#999">${totalOrdered()}/${totalMembers()}명</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${progressOf(totalOrdered(),totalMembers())}%"></div></div>
+        </div>
+        ${totalOrdered()>0?`<button class="btn-main" onclick="openSummary('all')">전체 집계 보기 (${totalOrdered()}건)</button>`:""}
+        <button class="btn-ghost" onclick="go('settings')">팀 · 팀원 관리</button>
+      </div>`;
+    return;
+  }
+
+  // 이름 선택
+  if(s.screen==="name"){
+    const members = membersOf(s.myTeam);
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div class="center" style="margin-bottom:24px;padding-top:20px">
+          <div style="font-size:52px">☕</div>
+          <h1 style="margin-top:8px">${esc(s.myTeam)} 커피 주문</h1>
+          <div class="sub">내 이름을 선택하세요 · ${teamOrderedCount(s.myTeam)}/${members.length}명 주문</div>
+          <div style="margin-top:6px;font-size:12px">${connStatus()}</div>
+        </div>
+        ${members.map(m=>{
+          const o = getOrder(s.myTeam, m);
+          const menu = o ? getDisplayMenu(o) : null;
+          return `<button class="member-btn ${menu?'done':''}" onclick="pickName('${enc(m)}')">
+            ${esc(m)}${menu?`<span class="member-status" style="color:#5A9E5A">✓ ${menu.emoji} ${esc(menu.name)}</span>`:''}
+          </button>`;
+        }).join("")}
+        <div class="section-label" style="margin-top:20px">목록에 없으면</div>
+        <div class="input-row">
+          <input id="nameInput" placeholder="이름 직접 입력" onkeydown="if(event.key==='Enter')addNewName()">
+          <button onclick="addNewName()">확인</button>
+        </div>
+        ${teamOrderedCount(s.myTeam)>0?`<button class="btn-main" onclick="openSummary('${enc(s.myTeam)}')">전체 집계 보기 (${teamOrderedCount(s.myTeam)}건)</button>`:""}
+        <button class="btn-sub" onclick="go('last')">지난 마감 내역 보기</button>
+        <button class="btn-ghost" onclick="go('settings')">팀원 관리</button>
+      </div>`;
+    return;
+  }
+
+  // 주문 완료
+  if(s.screen==="done"){
+    const myOrder = getOrder(s.myTeam, s.myName);
+    const menu = myOrder ? getDisplayMenu(myOrder) : null;
+    const members = membersOf(s.myTeam);
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:10px"><button class="back-btn" onclick="go('name')">←</button><span style="font-size:13px;color:#999">이름 목록으로</span></div>
+        <div class="big-emoji">${menu?menu.emoji:"☕"}</div>
+        <div class="center">
+          <h2>${menu?esc(menu.name):"주문 완료"}</h2>
+          ${myOrder?.note?`<div class="note-tag">📝 ${esc(myOrder.note)}</div>`:""}
+          <div class="sub" style="margin-top:4px">주문이 접수됐어요!</div>
+        </div>
+        <div class="card" style="margin-top:24px">
+          <div style="display:flex;justify-content:space-between;margin-bottom:6px">
+            <span style="font-size:13px;color:#666">${esc(s.myTeam)} 현황</span>
+            <span style="font-size:12px;color:#999">${teamOrderedCount(s.myTeam)}/${members.length}명</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${progressOf(teamOrderedCount(s.myTeam),members.length)}%"></div></div>
+          <div style="margin-top:10px">
+            ${members.map(m=>{
+              const o=getOrder(s.myTeam,m);
+              const mo=o?getDisplayMenu(o):null;
+              return `<div class="status-line">
+                <span style="color:#555">${esc(m)}</span>
+                ${mo?`<span style="color:#5A9E5A">✓ ${mo.emoji} ${esc(mo.name)}${o.note?` (${esc(o.note)})`:''}</span>`:'<span style="color:#ccc">미선택</span>'}
+              </div>`;
+            }).join("")}
+          </div>
+        </div>
+        <button class="btn-sub" onclick="go('order')">메뉴 변경하기</button>
+        <button class="btn-main" onclick="openSummary('${enc(s.myTeam)}')">전체 주문 보기</button>
+        <button class="btn-ghost" style="color:#d08080;border-color:#EBC8C8" onclick="cancelMyOrder()">내 주문 취소</button>
+        <button class="small-link" onclick="go('name')">다른 사람으로 변경</button>
+      </div>`;
+    return;
+  }
+
+  // 메뉴 선택
+  if(s.screen==="order"){
+    const recentHistory = (s.history?.[s.myTeam]?.[s.myName]||[]).slice(0,3).map(id=>getMenu(id)).filter(Boolean);
+    const myOrder = getOrder(s.myTeam, s.myName);
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:18px">
+          <button class="back-btn" onclick="go('${myOrder?'done':'name'}')">←</button><b>${esc(s.myName)}</b>님, 메뉴를 선택하세요
+        </div>
+        ${recentHistory.length?`<div class="hint-box">지난번: ${recentHistory.map(m=>`${m.emoji} ${esc(m.name)}`).join(" / ")}</div>`:""}
+        <div class="tabs">
+          ${CATS.map(c=>`<button class="tab ${s.activeTab===c.id?'active '+c.id:''}" onclick="setTab('${c.id}')">${c.icon} ${c.label}</button>`).join("")}
+        </div>
+        <div class="menu-grid">
+          ${MENU.filter(m=>m.cat===s.activeTab).map(m=>{
+            const chosen = myOrder?.menuId===m.id && !myOrder?.customName;
+            return `<button class="menu-btn"
+              style="background:${chosen?m.color:'#fff'};border-color:${chosen?m.color:'#E8E2D8'};color:${chosen?'#fff':'#4A3728'}"
+              onclick="pickMenu('${m.id}')">
+              <div class="menu-emoji">${m.emoji}</div>
+              <div class="menu-name">${m.name}</div>
+              ${chosen?'<div style="font-size:11px;margin-top:4px;opacity:0.8">✓ 선택됨</div>':''}
+            </button>`;
+          }).join("")}
+        </div>
+        ${s.activeTab==="other"?`
+        <p class="section-label" style="margin-top:0">메뉴에 없으면 직접 입력</p>
+        <div class="input-row">
+          <input id="customMenuInput" placeholder="예: 자몽에이드" value="${esc(s.customMenuInput||'')}"
+            oninput="state.customMenuInput=this.value" onkeydown="if(event.key==='Enter')pickCustomMenu()">
+          <button onclick="pickCustomMenu()">선택</button>
+        </div>
+        ${myOrder?.customName?`<div class="hint-box">✓ 현재 선택: ✍️ ${esc(myOrder.customName)}</div>`:""}
+        `:""}
+      </div>`;
+    return;
+  }
+
+  // 요청사항
+  if(s.screen==="note"){
+    const menu = s.pendingCustomName ? { emoji:"✍️", name:s.pendingCustomName } : getMenu(s.pendingMenu);
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:18px"><button class="back-btn" onclick="go('order')">←</button><b style="font-size:17px">요청사항 (선택)</b></div>
+        <div class="card" style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+          <span style="font-size:24px">${menu?menu.emoji:""}</span>
+          <span style="font-weight:700;color:#3A2A1A">${menu?esc(menu.name):""}</span>
+        </div>
+        <p class="section-label" style="margin-top:0">자주 쓰는 요청</p>
+        <div class="quick-tags">
+          ${QUICK_NOTES.map(tag=>`<button class="quick-tag ${s.noteInput.includes(tag)?'on':''}" onclick="toggleQuickNote('${tag}')">${tag}</button>`).join("")}
+        </div>
+        <p class="section-label" style="margin-top:0">직접 입력</p>
+        <textarea class="note-input" rows="3" placeholder="예: 시럽 빼주세요" oninput="state.noteInput=this.value">${esc(s.noteInput)}</textarea>
+        <button class="btn-main" onclick="confirmOrder()">주문 완료</button>
+        <button class="btn-ghost" onclick="confirmOrder(true)">요청사항 없이 완료</button>
+      </div>`;
+    return;
+  }
+
+  // 집계 (전체 / 팀별)
+  if(s.screen==="summary"){
+    const scope = s.summaryScope;
+    const entries = collectEntries(scope);
+    const groups = groupByMenu(entries);
+    const isAll = scope==="all";
+    const scopeTeams = isAll ? teamNames() : [scope];
+    const backTo = s.myName ? "done" : "name";
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:14px"><button class="back-btn" onclick="go('${backTo}')">←</button><b style="font-size:17px">주문 집계</b></div>
+
+        <div class="card" style="padding:14px 16px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span style="font-size:14px;font-weight:800;color:#3A2A1A">${isAll?"전체":esc(scope)} · 총 ${entries.length}잔</span>
+            <span style="font-size:12px;color:#999">${isAll?totalOrdered():teamOrderedCount(scope)}/${isAll?totalMembers():membersOf(scope).length}명</span>
+          </div>
+          <div class="progress-bar"><div class="progress-fill" style="width:${progressOf(entries.length, isAll?totalMembers():membersOf(scope).length)}%"></div></div>
+        </div>
+        <div class="tabs" style="margin-top:4px">
+          <button class="tab ${s.summaryView==='menu'?'active':''}" onclick="setView('menu')">메뉴별</button>
+          <button class="tab ${s.summaryView==='member'?'active':''}" onclick="setView('member')">팀원별</button>
+        </div>
+
+        ${s.summaryView==="menu" ? (
+          groups.length===0 ? '<p style="color:#bbb;font-size:14px;margin:16px 0">아직 주문이 없습니다</p>' :
+          groups.map(g=>{
+            const cat = g.menu.key.startsWith("custom:") ? {label:"직접입력",tag:"#EDD6F5",tagText:"#7C3D8C"} : getCat(g.menu.cat);
+            return `<div class="sum-card">
+              <div class="sum-head">
+                <div><span style="margin-right:6px">${g.menu.emoji}</span><span class="sum-title">${esc(g.menu.name)}</span>
+                  <span class="tag" style="background:${cat.tag};color:${cat.tagText};margin-left:6px">${cat.label}</span></div>
+                <span class="sum-count">${g.people.length}잔</span>
+              </div>
+              <div class="sum-names">
+                ${g.people.map(p=>`<span class="chip">${esc(p.name)}${isAll?`<span class="chip-team">${esc(p.team.replace(/^PT/,""))}</span>`:""}${p.order.note?`<span class="chip-note">· ${esc(p.order.note)}</span>`:""}</span>`).join("")}
+              </div>
+            </div>`;
+          }).join("")
+        ) : (
+          scopeTeams.map(t=>`
+            <div class="section-label">${esc(t)} · ${teamOrderedCount(t)}/${membersOf(t).length}명</div>
+            ${membersOf(t).map(m=>{
+              const o=getOrder(t,m);
+              const menu=o?getDisplayMenu(o):null;
+              const cat=menu?getCat(menu.cat):null;
+              return `<div class="row">
+                <span class="row-name">${esc(m)}</span>
+                ${menu?`<span class="row-menu">${menu.emoji} ${esc(menu.name)}${o.note?` <span style="color:#8A7355">(${esc(o.note)})</span>`:''} <span class="tag" style="background:${cat?.tag};color:${cat?.tagText}">${cat?.label}</span></span>`
+                      :'<span style="font-size:12px;color:#ccc">미선택</span>'}
+              </div>`;
+            }).join("")}`).join("")
+        )}
+
+        ${entries.length>0?`
+          <button class="btn-main" style="margin-top:16px" onclick="copyText()">주문 내용 텍스트 복사</button>
+          ${s.showCopy?`<div class="copy-box">${esc(buildCopyText(scope))}</div>`:""}
+          <button class="btn-sub" onclick="confirmReset(${isAll?"null":`'${enc(scope)}'`})">${isAll?"전체 주문 마감 & 이력 저장":esc(scope)+" 주문 마감 & 이력 저장"}</button>
+        `:""}
+      </div>`;
+    return;
+  }
+
+  // 지난 마감 내역
+  if(s.screen==="last"){
+    const src = lastOrdersSource();
+    const scope = s.summaryScope;
+    const entries = collectEntries(scope, src.orders);
+    const groups = groupByMenu(entries);
+    const when = src.at ? new Date(src.at).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"}) : "";
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:14px"><button class="back-btn" onclick="go('name')">←</button><b style="font-size:17px">지난 마감 내역</b>${when?`<span style="font-size:12px;color:#999;margin-left:8px">${when} 마감</span>`:""}</div>
+        ${src.fromHistory?`<div class="hint-box">이력에서 복원한 내역이라 요청사항(연하게, 샷 추가 등)은 표시되지 않아요.</div>`:""}
+        ${groups.length===0 ? '<p style="color:#bbb;font-size:14px;margin:16px 0">지난 마감 내역이 없습니다</p>' :
+          groups.map(g=>{
+            const cat = g.menu.key.startsWith("custom:") ? {label:"직접입력",tag:"#EDD6F5",tagText:"#7C3D8C"} : getCat(g.menu.cat);
+            return `<div class="sum-card">
+              <div class="sum-head">
+                <div><span style="margin-right:6px">${g.menu.emoji}</span><span class="sum-title">${esc(g.menu.name)}</span>
+                  <span class="tag" style="background:${cat.tag};color:${cat.tagText};margin-left:6px">${cat.label}</span></div>
+                <span class="sum-count">${g.people.length}잔</span>
+              </div>
+              <div class="sum-names">
+                ${g.people.map(p=>`<span class="chip">${esc(p.name)}${p.order.note?`<span class="chip-note">· ${esc(p.order.note)}</span>`:""}</span>`).join("")}
+              </div>
+            </div>`;
+          }).join("")}
+        ${entries.length>0?`
+          <div style="font-size:12px;color:#999;margin:6px 0 12px">총 ${entries.length}잔</div>
+          <button class="btn-main" onclick="copyText(true)">지난 주문 텍스트 복사</button>
+          ${s.showCopy?`<div class="copy-box">${esc(buildCopyText(scope, src.orders))}</div>`:""}
+        `:""}
+      </div>`;
+    return;
+  }
+
+  // 팀 · 팀원 관리
+  if(s.screen==="settings"){
+    const t = s.settingsTeam && s.teams[s.settingsTeam] ? s.settingsTeam : teamNames()[0];
+    s.settingsTeam = t;
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:16px"><button class="back-btn" onclick="go('name')">←</button><b style="font-size:17px">팀원 관리</b></div>
+        <div class="input-row">
+          <input id="newMemberInput" placeholder="${esc(t)}에 이름 추가" onkeydown="if(event.key==='Enter')addMember()">
+          <button onclick="addMember()">추가</button>
+        </div>
+        ${membersOf(t).map(m=>`
+          <div class="row">
+            <span class="row-name">${esc(m)}</span>
+            <button onclick="removeMember('${enc(m)}')" style="background:none;border:none;color:#bbb;font-size:13px;cursor:pointer">삭제</button>
+          </div>`).join("")}
+
+      </div>`;
+    return;
+  }
+}
+
+// ── 액션 ──
+function go(screen){ state.showCopy=false; state.screen=screen; render(); }
+function setTab(t){ state.activeTab=t; render(); }
+function setScope(v){ state.summaryScope = v==="all" ? "all" : decodeURIComponent(v); state.showCopy=false; render(); }
+function setView(v){ state.summaryView=v; render(); }
+function setSettingsTeam(v){ state.settingsTeam=decodeURIComponent(v); render(); }
+function openSummary(scope){ state.summaryScope = scope==="all" ? "all" : decodeURIComponent(scope); state.showCopy=false; state.screen="summary"; render(); }
+
+function pickTeam(v){
+  state.myTeam = decodeURIComponent(v);
+  state.myName = "";
+  state.screen = "name";
+  render();
+}
+function pickName(v){
+  const name = decodeURIComponent(v);
+  state.myName = name;
+  state.screen = getOrder(state.myTeam, name) ? "done" : "order";
+  render();
+}
+function addNewName(){
+  const inp = document.getElementById("nameInput");
+  const n = inp ? inp.value.trim() : "";
+  if(!n) return;
+  if(!membersOf(state.myTeam).includes(n)){
+    const t = {...state.teams, [state.myTeam]:[...membersOf(state.myTeam), n]};
+    saveTeams(t);
+  }
+  state.myName = n; state.screen = "order"; render();
+}
+function pickMenu(menuId){
+  state.pendingMenu = menuId;
+  state.pendingCustomName = "";
+  const existing = getOrder(state.myTeam, state.myName);
+  state.noteInput = (existing && existing.menuId===menuId && !existing.customName) ? (existing.note||"") : "";
+  state.screen = "note";
+  render();
+}
+function pickCustomMenu(){
+  const inp = document.getElementById("customMenuInput");
+  const n = inp ? inp.value.trim() : state.customMenuInput.trim();
+  if(!n) return;
+  state.pendingMenu = "";
+  state.pendingCustomName = n;
+  state.customMenuInput = "";
+  const existing = getOrder(state.myTeam, state.myName);
+  state.noteInput = (existing && existing.customName===n) ? (existing.note||"") : "";
+  state.screen = "note";
+  render();
+}
+function toggleQuickNote(tag){
+  const tags = state.noteInput.split(",").map(t=>t.trim()).filter(Boolean);
+  const idx = tags.indexOf(tag);
+  if(idx>=0) tags.splice(idx,1); else tags.push(tag);
+  state.noteInput = tags.join(", ");
+  render();
+}
+function confirmOrder(skipNote){
+  const note = skipNote ? "" : state.noteInput.trim();
+  saveOrder(state.myTeam, state.myName, state.pendingMenu, note, state.pendingCustomName);
+  state.screen = "done";
+  render();
+}
+function addMember(){
+  const inp = document.getElementById("newMemberInput");
+  const n = inp ? inp.value.trim() : "";
+  const t = state.settingsTeam;
+  if(n && !membersOf(t).includes(n)) saveTeams({...state.teams, [t]:[...membersOf(t), n]});
+  if(inp) inp.value = "";
+}
+function removeMember(v){
+  const name = decodeURIComponent(v);
+  const t = state.settingsTeam;
+  if(!confirm(name+"님을 "+t+"에서 삭제할까요?")) return;
+  saveTeams({...state.teams, [t]:membersOf(t).filter(m=>m!==name)});
+  removeOrder(t, name);
+}
+function addTeam(){
+  const inp = document.getElementById("newTeamInput");
+  const n = inp ? inp.value.trim() : "";
+  if(!n) return;
+  if(/[.#$\[\]\/]/.test(n)){ alert("팀 이름에 . # $ [ ] / 는 쓸 수 없어요."); return; }
+  if(state.teams[n]){ alert("이미 있는 팀이에요."); return; }
+  saveTeams({...state.teams, [n]:[]});
+  state.settingsTeam = n;
+  if(inp) inp.value = "";
+  render();
+}
+function removeTeam(v){
+  const t = decodeURIComponent(v);
+  if(!confirm(t+" 팀을 삭제할까요?\n팀원과 주문 내역이 모두 삭제됩니다.")) return;
+  const copy = {...state.teams}; delete copy[t];
+  saveTeams(copy);
+  ref("orders/"+t).remove();
+  state.settingsTeam = "";
+  render();
+}
+function cancelMyOrder(){
+  if(!confirm(state.myName+"님의 주문을 취소할까요?")) return;
+  removeOrder(state.myTeam, state.myName);
+  state.screen = "name"; state.myName = "";
+  render();
+}
+function confirmReset(v){
+  const team = v ? decodeURIComponent(v) : null;
+  const label = team ? team : "전체";
+  if(!confirm(label+" 주문을 마감할까요?\n현재 주문판이 비워지고, 내역은 [지난 마감 내역 보기]에서 확인할 수 있어요.")) return;
+  resetOrders(team);
+}
+
+render();
+</script>
+</body>
+</html>
