@@ -148,6 +148,7 @@ let state = {
   summaryView: "menu",         // "menu" | "member"
   settingsTeam: "",
   showCopy: false,
+  lastClosed: null,            // 마지막 마감 스냅샷 { at, orders }
 };
 
 // ── 유틸 ──
@@ -160,11 +161,23 @@ function teamNames(){
 function membersOf(team){ return state.teams[team] || []; }
 function getMenu(id){ return MENU.find(m=>m.id===id); }
 function getCat(id){ return CATS.find(c=>c.id===id); }
-function getOrder(team, name){
-  const o = state.orders?.[team]?.[name];
+function normOrder(o){
   if(!o) return null;
   if(typeof o === "string") return { menuId:o, note:"" };
   return o;
+}
+function getOrder(team, name){ return normOrder(state.orders?.[team]?.[name]); }
+// 지난 마감 데이터: 스냅샷이 있으면 그것, 없으면 이력의 최근 1건으로 복원
+function lastOrdersSource(){
+  if(state.lastClosed?.orders) return { orders: state.lastClosed.orders, at: state.lastClosed.at, fromHistory:false };
+  const o = {};
+  Object.entries(state.history||{}).forEach(([t,people])=>{
+    Object.entries(people||{}).forEach(([n,arr])=>{
+      const list = Array.isArray(arr)?arr:Object.values(arr||{});
+      if(list[0]){ if(!o[t]) o[t]={}; o[t][n]={ menuId:list[0], note:"" }; }
+    });
+  });
+  return { orders:o, at:null, fromHistory:true };
 }
 function getDisplayMenu(order){
   if(!order) return null;
@@ -186,6 +199,7 @@ function connStatus(){ return state.connected?'<span class="dot-green">● 실�
 // ── Firebase ──
 ref("orders").on("value", snap => { state.orders = snap.val()||{}; state.connected=true; render(); });
 ref("history").on("value", snap => { state.history = snap.val()||{}; render(); });
+ref("lastClosed").on("value", snap => { state.lastClosed = snap.val()||null; render(); });
 ref("teams").on("value", snap => {
   const v = snap.val();
   if(v && Object.keys(v).length){
@@ -213,6 +227,8 @@ function removeOrder(team, name){ ref("orders/"+team+"/"+name).remove(); }
 // 마감: team이 null이면 전체 마감
 function resetOrders(team){
   const targets = team ? [team] : teamNames();
+  // 마감 스냅샷 저장 (요청사항 포함) → 지난 마감 내역에서 복원 가능
+  ref("lastClosed").set({ at: Date.now(), orders: JSON.parse(JSON.stringify(state.orders||{})) });
   const h = JSON.parse(JSON.stringify(state.history||{}));
   targets.forEach(t=>{
     Object.entries(state.orders[t]||{}).forEach(([name,o])=>{
@@ -229,12 +245,12 @@ function resetOrders(team){
 }
 
 // ── 집계 데이터 ──
-function collectEntries(scope){
+function collectEntries(scope, src){
   const teams = scope==="all" ? teamNames() : [scope];
   const list = [];
   teams.forEach(t=>{
     membersOf(t).forEach(n=>{
-      const o = getOrder(t,n);
+      const o = src ? normOrder(src?.[t]?.[n]) : getOrder(t,n);
       if(!o) return;
       const menu = getDisplayMenu(o);
       if(!menu) return;
@@ -258,9 +274,9 @@ function groupByMenu(entries){
     return b.people.length - a.people.length;
   });
 }
-function buildCopyText(scope){
-  const groups = groupByMenu(collectEntries(scope));
-  const title = scope==="all" ? "전체" : scope;
+function buildCopyText(scope, src){
+  const groups = groupByMenu(collectEntries(scope, src));
+  const title = (scope==="all" ? "전체" : scope) + (src ? " 지난 마감" : "");
   const lines = [`[${title} 커피 주문] 총 ${groups.reduce((a,g)=>a+g.people.length,0)}잔`];
   groups.forEach(g=>{
     const names = g.people.map(p=>{
@@ -273,8 +289,8 @@ function buildCopyText(scope){
   });
   return lines.join("\n");
 }
-function copyText(){
-  const txt = buildCopyText(state.summaryScope);
+function copyText(src){
+  const txt = buildCopyText(state.summaryScope, src ? lastOrdersSource().orders : null);
   if(navigator.clipboard){ navigator.clipboard.writeText(txt).then(()=>alert("복사됐어요!")).catch(()=>{ state.showCopy=true; render(); }); }
   else { state.showCopy=true; render(); }
 }
@@ -340,6 +356,7 @@ function render(){
           <button onclick="addNewName()">확인</button>
         </div>
         ${teamOrderedCount(s.myTeam)>0?`<button class="btn-main" onclick="openSummary('${enc(s.myTeam)}')">전체 집계 보기 (${teamOrderedCount(s.myTeam)}건)</button>`:""}
+        <button class="btn-sub" onclick="go('last')">지난 마감 내역 보기</button>
         <button class="btn-ghost" onclick="go('settings')">팀원 관리</button>
       </div>`;
     return;
@@ -351,7 +368,8 @@ function render(){
     const menu = myOrder ? getDisplayMenu(myOrder) : null;
     const members = membersOf(s.myTeam);
     app.innerHTML = `
-      <div style="padding-top:60px">
+      <div style="padding-top:40px">
+        <div style="margin-bottom:10px"><button class="back-btn" onclick="go('name')">←</button><span style="font-size:13px;color:#999">이름 목록으로</span></div>
         <div class="big-emoji">${menu?menu.emoji:"☕"}</div>
         <div class="center">
           <h2>${menu?esc(menu.name):"주문 완료"}</h2>
@@ -506,6 +524,40 @@ function render(){
     return;
   }
 
+  // 지난 마감 내역
+  if(s.screen==="last"){
+    const src = lastOrdersSource();
+    const scope = s.summaryScope;
+    const entries = collectEntries(scope, src.orders);
+    const groups = groupByMenu(entries);
+    const when = src.at ? new Date(src.at).toLocaleString("ko-KR",{month:"numeric",day:"numeric",hour:"numeric",minute:"2-digit"}) : "";
+    app.innerHTML = `
+      <div style="padding-top:40px">
+        <div style="margin-bottom:14px"><button class="back-btn" onclick="go('name')">←</button><b style="font-size:17px">지난 마감 내역</b>${when?`<span style="font-size:12px;color:#999;margin-left:8px">${when} 마감</span>`:""}</div>
+        ${src.fromHistory?`<div class="hint-box">이력에서 복원한 내역이라 요청사항(연하게, 샷 추가 등)은 표시되지 않아요.</div>`:""}
+        ${groups.length===0 ? '<p style="color:#bbb;font-size:14px;margin:16px 0">지난 마감 내역이 없습니다</p>' :
+          groups.map(g=>{
+            const cat = g.menu.key.startsWith("custom:") ? {label:"직접입력",tag:"#EDD6F5",tagText:"#7C3D8C"} : getCat(g.menu.cat);
+            return `<div class="sum-card">
+              <div class="sum-head">
+                <div><span style="margin-right:6px">${g.menu.emoji}</span><span class="sum-title">${esc(g.menu.name)}</span>
+                  <span class="tag" style="background:${cat.tag};color:${cat.tagText};margin-left:6px">${cat.label}</span></div>
+                <span class="sum-count">${g.people.length}잔</span>
+              </div>
+              <div class="sum-names">
+                ${g.people.map(p=>`<span class="chip">${esc(p.name)}${p.order.note?`<span class="chip-note">· ${esc(p.order.note)}</span>`:""}</span>`).join("")}
+              </div>
+            </div>`;
+          }).join("")}
+        ${entries.length>0?`
+          <div style="font-size:12px;color:#999;margin:6px 0 12px">총 ${entries.length}잔</div>
+          <button class="btn-main" onclick="copyText(true)">지난 주문 텍스트 복사</button>
+          ${s.showCopy?`<div class="copy-box">${esc(buildCopyText(scope, src.orders))}</div>`:""}
+        `:""}
+      </div>`;
+    return;
+  }
+
   // 팀 · 팀원 관리
   if(s.screen==="settings"){
     const t = s.settingsTeam && s.teams[s.settingsTeam] ? s.settingsTeam : teamNames()[0];
@@ -634,7 +686,7 @@ function cancelMyOrder(){
 function confirmReset(v){
   const team = v ? decodeURIComponent(v) : null;
   const label = team ? team : "전체";
-  if(!confirm(label+" 주문을 마감하고 이력을 저장할까요?\n다음 주문을 위해 초기화됩니다.")) return;
+  if(!confirm(label+" 주문을 마감할까요?\n현재 주문판이 비워지고, 내역은 [지난 마감 내역 보기]에서 확인할 수 있어요.")) return;
   resetOrders(team);
 }
 
